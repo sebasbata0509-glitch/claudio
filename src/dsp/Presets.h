@@ -22,6 +22,18 @@ inline Params neutralParams()
     p.octave = 0.0f;
     p.formant = 0.0f;
     p.mix = 1.0f;
+
+    // Macro ships with musical ranges so turning it up "opens" the sound;
+    // the knob itself starts at 0 so presets are unaffected until it is used.
+    auto depth = [&p] (ModDest d, float v) { p.mod.macroDepth[(size_t) d - 1] = v; };
+    depth (ModDest::Formant, 0.25f);
+    depth (ModDest::Smear, 0.4f);
+    depth (ModDest::Stereo, 0.5f);
+    depth (ModDest::Detune, 0.2f);
+
+    // A ready-to-use arpeggio for the sequencer (off by default): root, fifth, octave...
+    p.mod.seqValue = { 0.0f, 0.0f, 7.0f / 12, 0.0f, 1.0f, 0.0f, 7.0f / 12, 5.0f / 12,
+                       0.0f, 0.0f, 7.0f / 12, 0.0f, 1.0f, 7.0f / 12, 5.0f / 12, 3.0f / 12 };
     return p;
 }
 

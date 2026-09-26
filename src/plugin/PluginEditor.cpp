@@ -23,13 +23,14 @@ NutSwellerEditor::Canvas::Canvas (NutSwellerProcessor& p)
       ratio (state, ids::ratio, "Ratio", Knob::Size::Medium),
       smear (state, ids::smear, "Smear", Knob::Size::Medium),
       stereo (state, ids::stereo, "Stereo", Knob::Size::Medium),
-      detune (state, ids::detune, "Detune", Knob::Size::Medium)
+      detune (state, ids::detune, "Detune", Knob::Size::Medium),
+      modPanel (state)
 {
     for (auto* c : std::initializer_list<juce::Component*> { &pitchSection, &centreSection, &formantSection, &textureSection })
         addAndMakeVisible (c);
     for (auto* c : std::initializer_list<juce::Component*> {
              &wordmark, &presetBox, &prevPreset, &nextPreset, &range, &mode, &pitch, &formant, &octave, &snap, &readout,
-             &mix, &glide, &output, &harmonics, &alternator, &fm, &ratio, &smear, &stereo, &detune })
+             &mix, &glide, &output, &harmonics, &alternator, &fm, &ratio, &smear, &stereo, &detune, &modPanel })
         addAndMakeVisible (c);
 
     refreshPresetList();
@@ -71,6 +72,7 @@ void NutSwellerEditor::Canvas::refresh()
     const float p = value (ids::snap) > 0.5f ? std::round (value (ids::pitch)) : value (ids::pitch);
     const float shift = p + 12.0f * std::round (value (ids::octave));
     readout.update (d.frequency.load(), d.confidence.load(), d.voiced.load(), shift, value (ids::mode) < 0.5f);
+    modPanel.updateFromEngine (d);
 
     const int prog = proc.getCurrentProgram();
     if (prog != lastProgram)
@@ -170,6 +172,8 @@ void NutSwellerEditor::Canvas::resized()
     place (detune);
 
     auto cap = [&] (int from, int to) { return juce::Rectangle<int> (from - textureSection.getX(), 28, to - from, 14); };
+    modPanel.setBounds (20, 588, 960, 222);
+
     textureSection.setSubCaptions ({ { "Tone", cap (toneX, toneX + w) },
                                      { "Motion", cap (motionX, motionX + w) },
                                      { "FM", cap (fmX, fmX + 2 * w) },

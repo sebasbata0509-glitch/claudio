@@ -25,6 +25,28 @@ inline constexpr auto mode = "mode";
 inline constexpr auto range = "range";
 inline constexpr auto velTarget = "velTarget";
 inline constexpr auto velAmount = "velAmount";
+
+// Modulation
+inline constexpr auto macro = "macro";
+inline constexpr auto seqOn = "seqOn";
+inline constexpr auto seqRate = "seqRate";
+inline constexpr auto seqDest = "seqDest";
+inline constexpr auto seqDepth = "seqDepth";
+inline constexpr auto seqLength = "seqLength";
+inline constexpr auto envDest = "envDest";
+inline constexpr auto envDepth = "envDepth";
+inline constexpr auto envAttack = "envAttack";
+inline constexpr auto envDecay = "envDecay";
+inline constexpr auto envSustain = "envSustain";
+inline constexpr auto envRelease = "envRelease";
+inline constexpr auto envTrigger = "envTrigger";
+inline constexpr auto envThreshold = "envThreshold";
+
+/** "macroDepth_pitch", ... one per modulation destination. */
+juce::String macroDepth (ModDest d);
+/** "seqStep1".."seqStep16" and "seqGlide1".."seqGlide16". */
+juce::String seqStep (int index);
+juce::String seqGlide (int index);
 } // namespace nsw::ids
 
 namespace nsw
@@ -46,6 +68,10 @@ private:
     };
     Raw pitch, snap, octave, formant, harmonics, alternator, fm, ratio, glide, smear, stereo, detune, mix, output,
         mode, range, velTarget, velAmount;
+    Raw macro, seqOn, seqRate, seqDest, seqDepth, seqLength, envDest, envDepth, envAttack, envDecay, envSustain,
+        envRelease, envTrigger, envThreshold;
+    std::array<Raw, kNumModDests> macroDepth;
+    std::array<Raw, 16> seqStep, seqGlide;
 };
 
 /** Write engine-level values into the parameters (used for factory presets). */

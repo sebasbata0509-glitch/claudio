@@ -82,6 +82,26 @@ void NutSwellerProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiB
 
     engine.setParams (reader.read());
 
+    nsw::Transport transport;
+    if (auto* ph = getPlayHead())
+    {
+        if (const auto pos = ph->getPosition())
+        {
+            if (const auto bpm = pos->getBpm())
+            {
+                transport.hasTempo = true;
+                transport.bpm = *bpm;
+            }
+            transport.isPlaying = pos->getIsPlaying();
+            if (const auto ppq = pos->getPpqPosition())
+            {
+                transport.hasPosition = true;
+                transport.ppqAtBlockStart = *ppq;
+            }
+        }
+    }
+    engine.setTransport (transport);
+
     if (bypassed)
     {
         engine.processBypassed (in, out, numSamples);

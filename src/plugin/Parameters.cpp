@@ -4,6 +4,13 @@
 
 namespace nsw
 {
+namespace ids
+{
+    juce::String macroDepth (ModDest d) { return "macroDepth_" + juce::String (modDestName (d)).toLowerCase(); }
+    juce::String seqStep (int index) { return "seqStep" + juce::String (index + 1); }
+    juce::String seqGlide (int index) { return "seqGlide" + juce::String (index + 1); }
+} // namespace ids
+
 namespace
 {
     using APF = juce::AudioParameterFloat;
@@ -11,7 +18,10 @@ namespace
     using APC = juce::AudioParameterChoice;
     using API = juce::AudioParameterInt;
 
-    juce::ParameterID pid (const char* id) { return { id, 1 }; }
+    juce::ParameterID pid (const juce::String& id) { return { id, 1 }; }
+
+    juce::String fmtMs (float v, int) { return v < 1000.0f ? juce::String (v, v < 10.0f ? 1 : 0) + " ms" : juce::String (v / 1000.0f, 2) + " s"; }
+    juce::String fmtSignedPercent (float v, int) { return (v > 0.05f ? "+" : "") + juce::String (v, 0) + "%"; }
 
     juce::String fmtSemis (float v, int)
     {
@@ -80,12 +90,63 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<APF> (pid (ids::velAmount), "Velocity Amount",
                                        juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f), d.velocityAmount * 100.0f,
                                        attrs ("%").withStringFromValueFunction (fmtPercent)));
+
+    // ---- Modulation
+    const auto& m = d.mod;
+    layout.add (std::make_unique<APF> (pid (ids::macro), "Macro", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f),
+                                       m.macro * 100.0f, attrs ("%").withStringFromValueFunction (fmtPercent)));
+    for (int i = 1; i <= kNumModDests; ++i)
+    {
+        const auto dest = (ModDest) i;
+        layout.add (std::make_unique<APF> (pid (ids::macroDepth (dest)), juce::String ("Macro > ") + modDestName (dest),
+                                           juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f),
+                                           m.macroDepth[(size_t) i - 1] * 100.0f,
+                                           attrs ("%").withStringFromValueFunction (fmtSignedPercent)));
+    }
+
+    layout.add (std::make_unique<APB> (pid (ids::seqOn), "Seq On", m.seqOn));
+    layout.add (std::make_unique<APC> (pid (ids::seqRate), "Seq Rate",
+                                       juce::StringArray { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" }, (int) m.seqRate));
+    layout.add (std::make_unique<APC> (pid (ids::seqDest), "Seq Target", juce::StringArray { "Pitch", "Formant" },
+                                       m.seqToFormant ? 1 : 0));
+    layout.add (std::make_unique<APF> (pid (ids::seqDepth), "Seq Depth", juce::NormalisableRange<float> (0.0f, 24.0f, 0.01f),
+                                       m.seqDepth, attrs ("st").withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " st"; })));
+    layout.add (std::make_unique<API> (pid (ids::seqLength), "Seq Length", 1, 16, m.seqLength));
+    for (int i = 0; i < 16; ++i)
+    {
+        layout.add (std::make_unique<APF> (pid (ids::seqStep (i)), "Seq Step " + juce::String (i + 1),
+                                           juce::NormalisableRange<float> (-100.0f, 100.0f, 0.01f), m.seqValue[(size_t) i] * 100.0f,
+                                           attrs ("%").withStringFromValueFunction (fmtSignedPercent)));
+        layout.add (std::make_unique<APF> (pid (ids::seqGlide (i)), "Seq Glide " + juce::String (i + 1),
+                                           juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), m.seqGlide[(size_t) i] * 100.0f,
+                                           attrs ("%").withStringFromValueFunction (fmtPercent)));
+    }
+
+    juce::StringArray dests;
+    for (int i = 0; i <= kNumModDests; ++i)
+        dests.add (modDestName ((ModDest) i));
+    layout.add (std::make_unique<APC> (pid (ids::envDest), "Env Target", dests, (int) m.envDest));
+    layout.add (std::make_unique<APF> (pid (ids::envDepth), "Env Depth", juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f),
+                                       m.envDepth * 100.0f, attrs ("%").withStringFromValueFunction (fmtSignedPercent)));
+    layout.add (std::make_unique<APF> (pid (ids::envAttack), "Env Attack", skewed (0.5f, 2000.0f, 60.0f, 0.1f), m.attackMs,
+                                       attrs ("ms").withStringFromValueFunction (fmtMs)));
+    layout.add (std::make_unique<APF> (pid (ids::envDecay), "Env Decay", skewed (1.0f, 4000.0f, 250.0f, 0.1f), m.decayMs,
+                                       attrs ("ms").withStringFromValueFunction (fmtMs)));
+    layout.add (std::make_unique<APF> (pid (ids::envSustain), "Env Sustain", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f),
+                                       m.sustain * 100.0f, attrs ("%").withStringFromValueFunction (fmtPercent)));
+    layout.add (std::make_unique<APF> (pid (ids::envRelease), "Env Release", skewed (1.0f, 5000.0f, 300.0f, 0.1f), m.releaseMs,
+                                       attrs ("ms").withStringFromValueFunction (fmtMs)));
+    layout.add (std::make_unique<APC> (pid (ids::envTrigger), "Env Trigger", juce::StringArray { "MIDI", "Input" },
+                                       (int) m.envTrigger));
+    layout.add (std::make_unique<APF> (pid (ids::envThreshold), "Env Threshold", juce::NormalisableRange<float> (-60.0f, 0.0f, 0.1f),
+                                       m.envThresholdDb,
+                                       attrs ("dB").withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " dB"; })));
     return layout;
 }
 
 ParameterReader::ParameterReader (juce::AudioProcessorValueTreeState& s)
 {
-    auto get = [&s] (const char* id) {
+    auto get = [&s] (const juce::String& id) {
         auto* p = s.getRawParameterValue (id);
         jassert (p != nullptr);
         return Raw { p };
@@ -108,6 +169,28 @@ ParameterReader::ParameterReader (juce::AudioProcessorValueTreeState& s)
     range = get (ids::range);
     velTarget = get (ids::velTarget);
     velAmount = get (ids::velAmount);
+
+    macro = get (ids::macro);
+    for (int i = 1; i <= kNumModDests; ++i)
+        macroDepth[(size_t) i - 1] = get (ids::macroDepth ((ModDest) i));
+    seqOn = get (ids::seqOn);
+    seqRate = get (ids::seqRate);
+    seqDest = get (ids::seqDest);
+    seqDepth = get (ids::seqDepth);
+    seqLength = get (ids::seqLength);
+    for (int i = 0; i < 16; ++i)
+    {
+        seqStep[(size_t) i] = get (ids::seqStep (i));
+        seqGlide[(size_t) i] = get (ids::seqGlide (i));
+    }
+    envDest = get (ids::envDest);
+    envDepth = get (ids::envDepth);
+    envAttack = get (ids::envAttack);
+    envDecay = get (ids::envDecay);
+    envSustain = get (ids::envSustain);
+    envRelease = get (ids::envRelease);
+    envTrigger = get (ids::envTrigger);
+    envThreshold = get (ids::envThreshold);
 }
 
 Params ParameterReader::read() const noexcept
@@ -131,12 +214,35 @@ Params ParameterReader::read() const noexcept
     p.range = std::round (range.get()) < 0.5f ? DetectionRange::Low : DetectionRange::High;
     p.velocityTarget = (VelocityTarget) juce::jlimit (0, 5, (int) std::round (velTarget.get()));
     p.velocityAmount = velAmount.get() * 0.01f;
+
+    auto& m = p.mod;
+    m.macro = macro.get() * 0.01f;
+    for (size_t i = 0; i < macroDepth.size(); ++i)
+        m.macroDepth[i] = macroDepth[i].get() * 0.01f;
+    m.seqOn = seqOn.get() > 0.5f;
+    m.seqRate = (SeqRate) juce::jlimit (0, 5, (int) std::round (seqRate.get()));
+    m.seqToFormant = seqDest.get() > 0.5f;
+    m.seqDepth = seqDepth.get();
+    m.seqLength = juce::jlimit (1, 16, (int) std::round (seqLength.get()));
+    for (size_t i = 0; i < 16; ++i)
+    {
+        m.seqValue[i] = seqStep[i].get() * 0.01f;
+        m.seqGlide[i] = seqGlide[i].get() * 0.01f;
+    }
+    m.envDest = (ModDest) juce::jlimit (0, kNumModDests, (int) std::round (envDest.get()));
+    m.envDepth = envDepth.get() * 0.01f;
+    m.attackMs = envAttack.get();
+    m.decayMs = envDecay.get();
+    m.sustain = envSustain.get() * 0.01f;
+    m.releaseMs = envRelease.get();
+    m.envTrigger = envTrigger.get() > 0.5f ? EnvTrigger::InputLevel : EnvTrigger::Midi;
+    m.envThresholdDb = envThreshold.get();
     return p;
 }
 
 void applyParams (juce::AudioProcessorValueTreeState& s, const Params& p)
 {
-    auto set = [&s] (const char* id, float value) {
+    auto set = [&s] (const juce::String& id, float value) {
         if (auto* param = s.getParameter (id))
         {
             param->beginChangeGesture();
@@ -162,5 +268,28 @@ void applyParams (juce::AudioProcessorValueTreeState& s, const Params& p)
     set (ids::range, p.range == DetectionRange::Low ? 0.0f : 1.0f);
     set (ids::velTarget, (float) (int) p.velocityTarget);
     set (ids::velAmount, p.velocityAmount * 100.0f);
+
+    const auto& m = p.mod;
+    set (ids::macro, m.macro * 100.0f);
+    for (int i = 1; i <= kNumModDests; ++i)
+        set (ids::macroDepth ((ModDest) i), m.macroDepth[(size_t) i - 1] * 100.0f);
+    set (ids::seqOn, m.seqOn ? 1.0f : 0.0f);
+    set (ids::seqRate, (float) (int) m.seqRate);
+    set (ids::seqDest, m.seqToFormant ? 1.0f : 0.0f);
+    set (ids::seqDepth, m.seqDepth);
+    set (ids::seqLength, (float) m.seqLength);
+    for (int i = 0; i < 16; ++i)
+    {
+        set (ids::seqStep (i), m.seqValue[(size_t) i] * 100.0f);
+        set (ids::seqGlide (i), m.seqGlide[(size_t) i] * 100.0f);
+    }
+    set (ids::envDest, (float) (int) m.envDest);
+    set (ids::envDepth, m.envDepth * 100.0f);
+    set (ids::envAttack, m.attackMs);
+    set (ids::envDecay, m.decayMs);
+    set (ids::envSustain, m.sustain * 100.0f);
+    set (ids::envRelease, m.releaseMs);
+    set (ids::envTrigger, (float) (int) m.envTrigger);
+    set (ids::envThreshold, m.envThresholdDb);
 }
 } // namespace nsw

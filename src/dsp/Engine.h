@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Modulation.h"
 #include "Synth.h"
 
 #include <atomic>
@@ -45,6 +46,7 @@ struct Params
     DetectionRange range = DetectionRange::High;
     VelocityTarget velocityTarget = VelocityTarget::None;
     float velocityAmount = 0.5f; // -1..1
+    ModParams mod;
 };
 
 struct MidiEvent
@@ -74,6 +76,9 @@ public:
     /** Set parameter values; picked up (and smoothed) from the next sample. */
     void setParams (const Params& p) noexcept;
 
+    /** Host tempo / position for the sequencer; call before each process(). */
+    void setTransport (const Transport& t) noexcept { transport = t; }
+
     /**
         Process a block. `in` / `out` may alias. MIDI events must be sorted by
         sampleOffset.
@@ -95,6 +100,8 @@ public:
         std::atomic<float> confidence { 0.0f };
         std::atomic<bool> voiced { false };
         std::atomic<float> level { -120.0f };
+        std::atomic<int> seqStep { 0 };
+        std::atomic<float> envelope { 0.0f };
     };
     const Display& display() const noexcept { return disp; }
 
@@ -121,7 +128,9 @@ private:
     void configureTiming();
     void startVoice (Voice& v, int note, float velocity, bool glideFromCurrent);
     void handleEvent (const MidiEvent& e) noexcept;
-    void updateControl() noexcept;
+    void updateControl (int sampleInBlock) noexcept;
+    Params applyModulation (const Params& base) const noexcept;
+    float currentShift() const noexcept;
     Voice* findVoiceForNote (int note) noexcept;
 
     double fs = 48000.0;
@@ -131,7 +140,10 @@ private:
     int fmBase = 72;
     int latencyTotal = 0;
 
-    Params params;
+    Params params, effective;
+    Transport transport;
+    Modulators mods;
+    float controlPeak = 0.0f;
     DetectionRange activeRange = DetectionRange::High;
     MidiMode activeMode = MidiMode::Off;
     Voice voices[kMaxVoices];

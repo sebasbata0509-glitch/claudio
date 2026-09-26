@@ -45,6 +45,7 @@ void Engine::prepare (double sampleRate, int /*maxBlockSize*/, int numInputChann
     }
     mixSmooth.prepare (fs, 20.0);
     gainSmooth.prepare (fs, 20.0);
+    mods.prepare (fs);
 
     configureTiming();
     reset();
@@ -77,9 +78,12 @@ void Engine::reset()
     }
     numHeld = 0;
     controlCounter = 0;
+    controlPeak = 0.0f;
+    mods.reset();
+    effective = applyModulation (params);
     activeMode = params.midiMode;
 
-    const float shift = (params.snap ? std::round (params.pitch) : params.pitch) + 12.0f * params.octave;
+    const float shift = currentShift();
     if (activeMode != MidiMode::Poly)
     {
         auto& v = voices[0];
@@ -89,8 +93,8 @@ void Engine::reset()
         v.targetNote.reset (60.0f);
         v.midiWeight.reset (0.0f);
     }
-    mixSmooth.reset (params.mix);
-    gainSmooth.reset (dbToGain (params.outputDb));
+    mixSmooth.reset (effective.mix);
+    gainSmooth.reset (dbToGain (effective.outputDb));
 }
 
 void Engine::setParams (const Params& p) noexcept
@@ -106,9 +110,39 @@ Engine::Voice* Engine::findVoiceForNote (int note) noexcept
     return nullptr;
 }
 
+float Engine::currentShift() const noexcept
+{
+    return (effective.snap ? std::round (effective.pitch) : effective.pitch) + 12.0f * effective.octave;
+}
+
+Params Engine::applyModulation (const Params& base) const noexcept
+{
+    const auto& m = base.mod;
+    float off[kNumModDests + 1] {};
+    for (int d = 1; d <= kNumModDests; ++d)
+        off[d] += m.macro * m.macroDepth[(size_t) d - 1] * modSpan ((ModDest) d);
+    if (m.envDest != ModDest::None)
+        off[(int) m.envDest] += mods.envelope() * m.envDepth * modSpan (m.envDest);
+    off[(int) (m.seqToFormant ? ModDest::Formant : ModDest::Pitch)] += mods.sequencerSemis();
+
+    Params e = base;
+    e.pitch = std::clamp (base.pitch + off[(int) ModDest::Pitch], -48.0f, 48.0f);
+    e.formant = std::clamp (base.formant + off[(int) ModDest::Formant], -12.0f, 12.0f);
+    e.harmonics = std::clamp (base.harmonics + off[(int) ModDest::Harmonics], -1.0f, 1.0f);
+    e.alternator = std::clamp (base.alternator + off[(int) ModDest::Alternator], 0.0f, 1.0f);
+    e.fm = std::clamp (base.fm + off[(int) ModDest::FM], 0.0f, 1.0f);
+    e.fmRatio = std::clamp (base.fmRatio * std::exp2 (off[(int) ModDest::Ratio]), 0.25f, 8.0f);
+    e.smear = std::clamp (base.smear + off[(int) ModDest::Smear], 0.0f, 1.0f);
+    e.stereo = std::clamp (base.stereo + off[(int) ModDest::Stereo], 0.0f, 1.0f);
+    e.detuneCents = std::clamp (base.detuneCents + off[(int) ModDest::Detune], 0.0f, 50.0f);
+    e.mix = std::clamp (base.mix + off[(int) ModDest::Mix], 0.0f, 1.0f);
+    e.outputDb = std::clamp (base.outputDb + off[(int) ModDest::Output], -24.0f, 12.0f);
+    return e;
+}
+
 void Engine::startVoice (Voice& v, int note, float velocity, bool glideFromCurrent)
 {
-    const float shift = (params.snap ? std::round (params.pitch) : params.pitch) + 12.0f * params.octave;
+    const float shift = currentShift();
     if (! v.active || ! glideFromCurrent)
     {
         for (int c = 0; c < kMaxChannels; ++c)
@@ -166,6 +200,7 @@ void Engine::handleEvent (const MidiEvent& e) noexcept
         }
         heldNotes[numHeld++] = e.note;
         monoVelocity = e.velocity;
+        mods.retrigger();
     }
 
     if (activeMode == MidiMode::Mono)
@@ -174,7 +209,7 @@ void Engine::handleEvent (const MidiEvent& e) noexcept
         if (on)
         {
             const bool fromFollow = v.midiWeight.getCurrent() < 0.01f;
-            const float shift = (params.snap ? std::round (params.pitch) : params.pitch) + 12.0f * params.octave;
+            const float shift = currentShift();
             if (fromFollow)
                 v.targetNote.reset ((float) e.note + shift);
             v.velocity = e.velocity;
@@ -221,9 +256,21 @@ void Engine::handleEvent (const MidiEvent& e) noexcept
     }
 }
 
-void Engine::updateControl() noexcept
+void Engine::updateControl (int sampleInBlock) noexcept
 {
-    const Params& p = params;
+    // Modulators run at control rate.
+    mods.setInputLevel (controlPeak);
+    controlPeak = 0.0f;
+    const auto& m = params.mod;
+    const bool gate = m.envTrigger == EnvTrigger::Midi ? numHeld > 0 : mods.levelGate (m.envThresholdDb);
+    const double bpm = transport.hasTempo && transport.bpm > 1.0 ? transport.bpm : 120.0;
+    double ppq = -1.0;
+    if (transport.isPlaying && transport.hasPosition)
+        ppq = transport.ppqAtBlockStart + (double) sampleInBlock / fs * bpm / 60.0;
+    mods.advance (m, kControlInterval, ppq, bpm, gate);
+    effective = applyModulation (params);
+
+    const Params& p = effective;
 
     if (p.range != activeRange)
     {
@@ -270,7 +317,7 @@ void Engine::updateControl() noexcept
         }
     }
 
-    const float shift = (p.snap ? std::round (p.pitch) : p.pitch) + 12.0f * p.octave;
+    const float shift = currentShift();
     const float glide = std::max (2.0f, p.glideMs);
     const bool midiNotes = activeMode != MidiMode::Off;
     int numActive = 0;
@@ -364,12 +411,15 @@ void Engine::process (const float* const* in, float* const* out, int numSamples,
             handleEvent (events[ev++]);
 
         if (controlCounter == 0)
-            updateControl();
+            updateControl (i);
         if (++controlCounter == kControlInterval)
             controlCounter = 0;
 
         for (int c = 0; c < numIn; ++c)
+        {
             frame[c] = in[c][i];
+            controlPeak = std::max (controlPeak, std::abs (frame[c]));
+        }
         an.push (frame);
         const int64_t n = an.now();
 
@@ -383,7 +433,7 @@ void Engine::process (const float* const* in, float* const* out, int numSamples,
             {
                 float y = v.ch[c].process (n, an, an.input (c), v.gs[c], timing, c == 1);
                 y = v.post[c].process (y, v.ch[c].outputPeriod(), v.ch[c].outputVoiced(), v.harmonics, v.fm,
-                                       params.fmRatio);
+                                       effective.fmRatio);
                 wet[c] += g * y;
             }
             if (! v.held && v.gain.getTarget() == 0.0f && v.gain.getCurrent() < 1.0e-4f)
@@ -407,6 +457,8 @@ void Engine::process (const float* const* in, float* const* out, int numSamples,
     disp.confidence.store (e.confidence, std::memory_order_relaxed);
     disp.voiced.store (e.voiced, std::memory_order_relaxed);
     disp.level.store (e.levelDb, std::memory_order_relaxed);
+    disp.seqStep.store (mods.currentStep(), std::memory_order_relaxed);
+    disp.envelope.store (mods.envelope(), std::memory_order_relaxed);
 }
 
 void Engine::processBypassed (const float* const* in, float* const* out, int numSamples) noexcept

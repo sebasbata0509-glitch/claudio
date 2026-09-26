@@ -24,6 +24,7 @@ juce_add_plugin(NutSweller
 
 target_sources(NutSweller PRIVATE
     LookAndFeel.cpp
+    ModPanel.cpp
     Parameters.cpp
     PluginEditor.cpp
     PluginProcessor.cpp

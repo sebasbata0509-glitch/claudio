@@ -166,7 +166,7 @@ private:
             r.y1 = y;
             x = y;
         }
-        return x * 0.05f;
+        return x * 0.4f; // peaks around -16 dBFS, like a typical vocal take
     }
 
     struct Resonator { float a1 = 0, a2 = 0, g = 1, y1 = 0, y2 = 0; };

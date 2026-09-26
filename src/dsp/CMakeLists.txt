@@ -1,6 +1,7 @@
 add_library(nutsweller_dsp STATIC
     Analyzer.cpp
     Engine.cpp
+    Modulation.cpp
     PitchDetector.cpp
     Synth.cpp)
 
