@@ -271,7 +271,7 @@ void Engine::updateControl() noexcept
     }
 
     const float shift = (p.snap ? std::round (p.pitch) : p.pitch) + 12.0f * p.octave;
-    const float glide = std::max (1.0f, p.glideMs / 3.0f);
+    const float glide = std::max (2.0f, p.glideMs);
     const bool midiNotes = activeMode != MidiMode::Off;
     int numActive = 0;
     for (auto& v : voices)

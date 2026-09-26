@@ -7,3 +7,4 @@ endfunction()
 
 nsw_add_test(test_pitch_detector)
 nsw_add_test(test_shifter)
+nsw_add_test(test_parameters)

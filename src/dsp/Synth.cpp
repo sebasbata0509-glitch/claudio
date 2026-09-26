@@ -65,8 +65,8 @@ void SynthChannel::emit (int64_t n, const Analyzer& an, const RingBuffer& src, c
         {
             // Smear / stereo: reach back to earlier cycles for some grains.
             int back = 0;
-            if (gs.smear > 0.0f && rng.uniform() < gs.smear)
-                back += 1 + (int) (rng.uniform() * gs.smear * 3.0f);
+            if (gs.smear > 0.0f && rng.uniform() < 0.3f + 0.7f * gs.smear)
+                back += (int) (rng.uniform() * (1.0f + gs.smear * 8.0f));
             if (secondChannel && gs.stereo > 0.0f && rng.uniform() < gs.stereo * 0.5f)
                 back += 1;
             k = std::max (k - back, an.oldestMark());
@@ -105,7 +105,7 @@ void SynthChannel::emit (int64_t n, const Analyzer& an, const RingBuffer& src, c
 
             hop = outPeriod;
             if (gs.smear > 0.0f)
-                hop *= 1.0f + 0.3f * gs.smear * rng.bipolar();
+                hop *= 1.0f + 0.06f * gs.smear * rng.bipolar();
             lastOutPeriod = basePeriod;
             voicedGrain = true;
         }
@@ -116,7 +116,7 @@ void SynthChannel::emit (int64_t n, const Analyzer& an, const RingBuffer& src, c
         const auto halfOut = (float) timing.unvoicedHalf;
         double srcCentre = std::min (target, (double) n - halfOut * f - 3.0);
         if (gs.smear > 0.0f)
-            srcCentre -= rng.uniform() * gs.smear * halfOut * 4.0f;
+            srcCentre -= rng.uniform() * gs.smear * halfOut * 8.0f;
         double centre = nextS;
         if (secondChannel && gs.stereo > 0.0f)
         {

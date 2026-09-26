@@ -88,7 +88,11 @@ struct Biquad
     }
 };
 
-/** One-pole exponential smoother, per-sample. */
+/**
+    Two cascaded one-pole low-passes (critically damped): the smoothed value
+    and its slope are both continuous, so parameter jumps never click.
+    `timeMs` is roughly the time to cover ~90% of a step.
+*/
 class Smoother
 {
 public:
@@ -99,19 +103,22 @@ public:
     }
     void setTime (double timeMs) noexcept
     {
-        coeff = timeMs <= 0.0 ? 0.0f : (float) std::exp (-1.0 / (0.001 * timeMs * fs));
+        const double tau = 0.001 * timeMs / 3.9; // two poles reach ~90% at ~3.9 tau
+        coeff = timeMs <= 0.0 ? 0.0f : (float) std::exp (-1.0 / (tau * fs));
     }
-    void reset (float v) noexcept { current = target = v; }
+    void reset (float v) noexcept { current = stage = target = v; }
     void setTarget (float v) noexcept { target = v; }
     float next() noexcept
     {
-        current = target + coeff * (current - target);
+        stage = target + coeff * (stage - target);
+        current = stage + coeff * (current - stage);
         return current;
     }
-    /** Advance by n samples at once (for per-grain / per-block updates). */
+    /** Advance by n samples at once (for control-rate updates). */
     float advance (int n) noexcept
     {
-        current = target + std::pow (coeff, (float) n) * (current - target);
+        for (int i = 0; i < n; ++i)
+            next();
         return current;
     }
     float getCurrent() const noexcept { return current; }
@@ -119,7 +126,7 @@ public:
 
 private:
     double fs = 48000.0;
-    float coeff = 0.0f, current = 0.0f, target = 0.0f;
+    float coeff = 0.0f, current = 0.0f, stage = 0.0f, target = 0.0f;
 };
 
 /** 4-point, 3rd-order Hermite interpolation. frac in [0, 1) between y0 and y1. */
