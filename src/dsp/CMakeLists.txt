@@ -1,6 +1,8 @@
 add_library(nutsweller_dsp STATIC
+    Analyzer.cpp
     Engine.cpp
-    PitchDetector.cpp)
+    PitchDetector.cpp
+    Synth.cpp)
 
 target_include_directories(nutsweller_dsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(nutsweller_dsp PUBLIC cxx_std_17)

@@ -92,7 +92,7 @@ private:
 
     float yinThreshold = 0.15f;
     float voicedOn = 0.25f, voicedOff = 0.40f;
-    float gateDb = -60.0f;
+    float gateDb = -70.0f;
 
     int64_t sampleCount = 0;
     PitchEstimate estimate;

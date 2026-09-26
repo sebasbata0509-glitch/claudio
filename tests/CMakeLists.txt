@@ -6,3 +6,4 @@ function(nsw_add_test name)
 endfunction()
 
 nsw_add_test(test_pitch_detector)
+nsw_add_test(test_shifter)
