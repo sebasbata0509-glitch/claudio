@@ -1,0 +1,9 @@
+/build*/
+/out/
+/.vs/
+/.idea/
+/.vscode/
+/cmake-build-*/
+.DS_Store
+*.user
+/tools/pluginval*
