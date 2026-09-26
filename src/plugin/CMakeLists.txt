@@ -23,8 +23,13 @@ juce_add_plugin(NutSweller
     NEEDS_CURL                  FALSE)
 
 target_sources(NutSweller PRIVATE
+    LookAndFeel.cpp
+    Parameters.cpp
+    PluginEditor.cpp
     PluginProcessor.cpp
-    PluginEditor.cpp)
+    Widgets.cpp)
+
+target_include_directories(NutSweller PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_definitions(NutSweller PUBLIC
     JUCE_WEB_BROWSER=0
