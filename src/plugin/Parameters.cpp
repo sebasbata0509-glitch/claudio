@@ -14,7 +14,6 @@ namespace ids
 namespace
 {
     using APF = juce::AudioParameterFloat;
-    using APB = juce::AudioParameterBool;
     using APC = juce::AudioParameterChoice;
     using API = juce::AudioParameterInt;
 
@@ -47,7 +46,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     layout.add (std::make_unique<APF> (pid (ids::pitch), "Pitch", juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f),
                                        d.pitch, attrs ("st").withStringFromValueFunction (fmtSemis)));
-    layout.add (std::make_unique<APB> (pid (ids::snap), "Snap", d.snap));
+    // On/off switches are two-state choices: unlike AudioParameterBool they always snap
+    // their normalised value, so hosts restoring state get back exactly 0 or 1.
+    layout.add (std::make_unique<APC> (pid (ids::snap), "Snap", juce::StringArray { "Off", "On" }, d.snap ? 1 : 0));
     layout.add (std::make_unique<API> (pid (ids::octave), "Octave", -2, 2, (int) d.octave));
     layout.add (std::make_unique<APF> (pid (ids::formant), "Formant", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f),
                                        d.formant, attrs ("st").withStringFromValueFunction (fmtSemis)));
@@ -104,7 +105,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                                            attrs ("%").withStringFromValueFunction (fmtSignedPercent)));
     }
 
-    layout.add (std::make_unique<APB> (pid (ids::seqOn), "Seq On", m.seqOn));
+    layout.add (std::make_unique<APC> (pid (ids::seqOn), "Seq On", juce::StringArray { "Off", "On" }, m.seqOn ? 1 : 0));
     layout.add (std::make_unique<APC> (pid (ids::seqRate), "Seq Rate",
                                        juce::StringArray { "1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T" }, (int) m.seqRate));
     layout.add (std::make_unique<APC> (pid (ids::seqDest), "Seq Target", juce::StringArray { "Pitch", "Formant" },

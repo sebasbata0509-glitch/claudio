@@ -1,0 +1,97 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (universal)
+            os: macos-14
+            pluginval: pluginval_macOS.zip
+            pluginval_bin: pluginval.app/Contents/MacOS/pluginval
+          - name: Windows x64
+            os: windows-latest
+            pluginval: pluginval_Windows.zip
+            pluginval_bin: pluginval.exe
+          - name: Linux x64
+            os: ubuntu-24.04
+            pluginval: pluginval_Linux.zip
+            pluginval_bin: pluginval
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxext-dev libxcomposite-dev libxi-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev xvfb ninja-build
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cmake -S . -B build -A x64
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          else
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Check universal binary
+        if: runner.os == 'macOS'
+        run: |
+          lipo -info build/src/plugin/NutSweller_artefacts/Release/VST3/NutSweller.vst3/Contents/MacOS/NutSweller
+          lipo -info build/src/plugin/NutSweller_artefacts/Release/AU/NutSweller.component/Contents/MacOS/NutSweller
+
+      - name: pluginval (strictness 10)
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/latest/download/${{ matrix.pluginval }}"
+          unzip -q pluginval.zip
+          VST3=build/src/plugin/NutSweller_artefacts/Release/VST3/NutSweller.vst3
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            xvfb-run -a ./${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process "$VST3"
+          else
+            ./${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process "$VST3"
+          fi
+
+      - name: auval
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/src/plugin/NutSweller_artefacts/Release/AU/NutSweller.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aumf Nsw1 NtSw
+
+      - name: CPU benchmark
+        shell: bash
+        run: |
+          BIN=build/tools/nutsweller_bench
+          [ -f build/tools/Release/nutsweller_bench.exe ] && BIN=build/tools/Release/nutsweller_bench.exe
+          "$BIN" 2
+
+      - name: Upload plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: NutSweller-${{ runner.os }}
+          path: |
+            build/src/plugin/NutSweller_artefacts/Release/VST3
+            build/src/plugin/NutSweller_artefacts/Release/AU
+            build/src/plugin/NutSweller_artefacts/Release/Standalone
+          if-no-files-found: ignore
