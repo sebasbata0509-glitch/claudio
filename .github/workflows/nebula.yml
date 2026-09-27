@@ -1,0 +1,78 @@
+name: nebula
+
+on:
+  push:
+    paths:
+      - "nebula/**"
+      - ".github/workflows/nebula.yml"
+  pull_request:
+    paths:
+      - "nebula/**"
+      - ".github/workflows/nebula.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Nebula ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            pluginval: pluginval_Windows.zip
+            pluginval_bin: pluginval.exe
+          - name: Linux x64
+            os: ubuntu-24.04
+            pluginval: pluginval_Linux.zip
+            pluginval_bin: pluginval
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: nebula
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxext-dev libxcomposite-dev libxi-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev xvfb ninja-build
+
+      - name: Configure
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cmake -S . -B build -A x64 -DNEBULA_WERROR=ON
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEBULA_WERROR=ON
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: pluginval (strictness 10)
+        run: |
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/latest/download/${{ matrix.pluginval }}"
+          unzip -q pluginval.zip
+          VST3=build/Nebula_artefacts/Release/VST3/Nebula.vst3
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            xvfb-run -a ./${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process "$VST3"
+          else
+            ./${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process "$VST3"
+          fi
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nebula-${{ runner.os }}
+          path: |
+            nebula/build/Nebula_artefacts/Release/VST3
+            nebula/build/Nebula_artefacts/Release/Standalone
+          if-no-files-found: error
