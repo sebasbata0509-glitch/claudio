@@ -1,0 +1,5 @@
+add_executable(tone-ayan-cli tone_ayan_cli.cpp)
+target_link_libraries(tone-ayan-cli PRIVATE tone::core nlohmann_json::nlohmann_json)
+if(MSVC)
+    target_compile_options(tone-ayan-cli PRIVATE /utf-8)
+endif()

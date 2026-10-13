@@ -1,0 +1,6 @@
+/build*/
+/out/
+/.vs/
+/package/
+*.user
+demo*.wav

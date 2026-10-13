@@ -1,0 +1,14 @@
+{
+  "comment": "Example edit list for tone-ayan-cli. Note indices refer to the order printed by 'analyze'.",
+  "scale": { "root": "A", "type": "Natural Minor" },
+  "edits": [
+    { "notes": "all", "correctToScale": 1.0 },
+    { "notes": "all", "drift": 0.3 },
+    { "note": 2, "modulation": 0.4 },
+    { "note": 6, "modulation": 1.6 },
+    { "note": 3, "pitch": 2.0 },
+    { "note": 4, "time": 0.08 },
+    { "note": 6, "stretch": 1.3 },
+    { "note": 1, "formant": 1.5, "gain": -2.0 }
+  ]
+}
